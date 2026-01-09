@@ -1,5 +1,5 @@
 import { Router } from "express";
-import {  activeGames, checkTile, HandleMinesCount, StartGame } from "../services/gameLogic.js";
+import {  activeGames, checkTile, getAllMines, HandleMinesCount, StartGame } from "../services/gameLogic.js";
 import { getPayoutTable } from "../services/gameMath.js";
 import { error } from "console";
 
@@ -32,11 +32,12 @@ router.post('/reveal-cell', (req, res) => {
     }
 
     try {
-     
         const isMine = checkTile(tileIndex, gameId);
         const stepResult = HandleMinesCount(isMine, gameId); 
+        
         if (isMine) {
-            res.json({ result: 'mine', multiplier: 0 });
+            const minesArray = getAllMines(gameId)
+            res.json({ result: 'mine', multiplier: 0, allMines: minesArray, status: 'LOST' });
         } else if (activeGames[gameId]) {
             res.json({ 
                 result: 'safe', 

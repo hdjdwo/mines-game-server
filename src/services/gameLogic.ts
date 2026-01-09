@@ -1,11 +1,14 @@
 import seedrandom from "seedrandom";
 import { calculateMultiplier } from "./gameMath.js";
 
+type GameStatus = 'FINISH' | 'NO_FINISH'
+
 interface ActiveGameState {
 mines: number[];
 seed: string;
 minesCount: number;
-safePick: number
+safePick: number;
+status: GameStatus;
 }
 
 export const activeGames: Record<string, ActiveGameState> = {}
@@ -48,6 +51,7 @@ if (typeof minesCount !== "number" || minesCount <= 0 || minesCount > 24) {
         seed: serverSeed, 
         minesCount: minesCount,
         safePick: 0,
+        status: 'NO_FINISH'
     };
     
     console.log(`Игра ${gameId} начата. Мины:`, selectedMines);
@@ -61,7 +65,23 @@ export const checkTile = (tileIndex: number, gameId: string): boolean => {
     if (!currentGame) {
         throw new Error('Game not found.');
     }
+    if(currentGame.mines.includes(tileIndex)) {
+        currentGame.status = 'FINISH'
+    }
     return currentGame.mines.includes(tileIndex);
+}
+
+export const getAllMines = (gameId: string) => {
+const currentGame = activeGames[gameId]
+
+ if (!currentGame) {
+        throw new Error('Game not found.');
+    }
+if(currentGame.status === 'FINISH') {
+    return currentGame.mines
+} 
+    throw new Error('Game not Finished.')
+    
 }
 
 export const HandleMinesCount = (isMine: boolean, gameId: string, rtp: number = 0.90): {currentMultiplier: number, error?: string} => {
