@@ -81,7 +81,14 @@ if(currentGame.status === 'FINISH') {
     return currentGame.mines
 } 
     throw new Error('Game not Finished.')
-    
+}
+
+export const TEST_getAllMines = (gameId: string) => {
+const currentGame = activeGames[gameId]
+if (!currentGame) {
+        throw new Error('Game not found.');
+    }
+    return currentGame.mines
 }
 
 export const HandleMinesCount = (isMine: boolean, gameId: string, rtp: number = 0.90): {currentMultiplier: number, error?: string} => {

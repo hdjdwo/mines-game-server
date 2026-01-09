@@ -1,5 +1,5 @@
 import { Router } from "express";
-import {  activeGames, checkTile, getAllMines, HandleMinesCount, StartGame } from "../services/gameLogic.js";
+import {  activeGames, checkTile, getAllMines, HandleMinesCount, StartGame, TEST_getAllMines } from "../services/gameLogic.js";
 import { getPayoutTable } from "../services/gameMath.js";
 import { error } from "console";
 
@@ -77,4 +77,24 @@ catch(error) {
     
 )
 
+router.post('/test-route',(req, res) => {
+const {gameId} = req.body as {gameId: string}
+if(!gameId) return res.status(400).json({ error: 'Invalid gameId.' });
+try {
+    const mines = TEST_getAllMines(gameId)
+    if(!mines) {
+     return res.json({ result: [], error: 'Invalid TEST'});
+    } else {
+        return  res.json({result: mines})
+
+    }
+    
+}
+catch(error) {
+    console.error('Error starting game:', error);
+        res.status(500).json({ error: 'Internal server error' });
+}
+}
+    
+)
 export default router
