@@ -1,12 +1,14 @@
 import seedrandom from "seedrandom";
+import { calculateMultiplier } from "./gameMath.js";
 
 interface ActiveGameState {
 mines: number[];
 seed: string;
 minesCount: number;
+safePick: number
 }
 
-const activeGames: Record<string, ActiveGameState> = {}
+export const activeGames: Record<string, ActiveGameState> = {}
 
 const generateGameId = () => {
  return (Math.random().toString(36).substring(2, 6) + Date.now().toString(36)).toLocaleUpperCase();
@@ -45,6 +47,7 @@ if (typeof minesCount !== "number" || minesCount <= 0 || minesCount > 24) {
         mines: selectedMines,
         seed: serverSeed, 
         minesCount: minesCount,
+        safePick: 0,
     };
     
     console.log(`Игра ${gameId} начата. Мины:`, selectedMines);
@@ -59,4 +62,18 @@ export const checkTile = (tileIndex: number, gameId: string): boolean => {
         throw new Error('Game not found.');
     }
     return currentGame.mines.includes(tileIndex);
+}
+
+export const HandleMinesCount = (isMine: boolean, gameId: string, rtp: number = 0.90): {currentMultiplier: number, error?: string} => {
+    const currentGame = activeGames[gameId];
+    if (currentGame) {
+        if (isMine) {
+            currentGame.safePick = 0;
+            return { currentMultiplier: 0 };
+        } 
+        currentGame.safePick += 1;
+        const multiplier = calculateMultiplier(currentGame.minesCount, currentGame.safePick, rtp); 
+        return { currentMultiplier: multiplier };
+    }
+    return { currentMultiplier: 0, error: 'Invalid game' };
 }
