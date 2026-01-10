@@ -1,5 +1,5 @@
 import { Router } from "express";
-import {  activeGames, checkTile, getAllMines, HandleMinesCount, StartGame, TEST_getAllMines } from "../services/gameLogic.js";
+import {  activeGames, checkTile, getAllMines, HandleMinesCount, StartGame, TEST_getAllMines, WinGame } from "../services/gameLogic.js";
 import { getPayoutTable } from "../services/gameMath.js";
 import { error } from "console";
 
@@ -33,11 +33,11 @@ router.post('/reveal-cell', (req, res) => {
 
     try {
         const isMine = checkTile(tileIndex, gameId);
-        const stepResult = HandleMinesCount(isMine, gameId); 
+        const stepResult = HandleMinesCount(isMine, gameId, RTP_CONFIG); 
         
         if (isMine) {
             const minesArray = getAllMines(gameId)
-            res.json({ result: 'mine', multiplier: 0, allMines: minesArray, status: 'LOST' });
+           return res.json({ result: 'mine', multiplier: 0, allMines: minesArray, status: 'LOST' });
         } else if (activeGames[gameId]) {
             res.json({ 
                 result: 'safe', 
@@ -45,14 +45,14 @@ router.post('/reveal-cell', (req, res) => {
                 safePick: activeGames[gameId].safePick 
             });
         }
-        res.json({ result: 'NaN', multiplier: 0, error: 'Invalid GameID' });
+      return  res.json({ result: 'NaN', multiplier: 0, error: 'Invalid GameID' });
     } catch (error) {
         if (error instanceof Error && error.message.includes('Game not found')) {
              return res.status(404).json({ error: error.message });
         }
         
         console.error('Cell selection error:', error);
-        res.status(500).json({ error: 'Internal server error during tile check.' });
+      return  res.status(500).json({ error: 'Internal server error during tile check.' });
     }
 });
 
@@ -97,4 +97,19 @@ catch(error) {
 }
     
 )
+
+
+router.post('/win-game', (req, res) => {
+    const {gameId} = req.body as {gameId: string}
+    if(!gameId) return res.status(400).json({ error: 'Invalid gameId.' });
+    try {
+      const winBet =  WinGame(gameId, RTP_CONFIG);
+        const allMines = getAllMines(gameId)
+        res.json({status: 'WIN', allMines: allMines, winAmount: winBet} )
+    } catch(error) {
+        res.status(500).json({ error: 'Error calculating winnings, game not found' });
+    }
+})
+
+
 export default router

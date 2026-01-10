@@ -1,7 +1,7 @@
 import seedrandom from "seedrandom";
 import { calculateMultiplier } from "./gameMath.js";
 
-type GameStatus = 'FINISH' | 'NO_FINISH'
+type GameStatus = 'LOSE' | 'WIN' | 'NO_FINISH'
 
 interface ActiveGameState {
 mines: number[];
@@ -9,6 +9,7 @@ seed: string;
 minesCount: number;
 safePick: number;
 status: GameStatus;
+betAmount: number;
 }
 
 export const activeGames: Record<string, ActiveGameState> = {}
@@ -35,7 +36,7 @@ const randomizeMines = (minesCount: number, serverSeed: string) => {
     return selectedMines;
 }
 
-export const StartGame = (minesCount: number, userId: string = '#') : {gameId: string, error?: string} => {
+export const StartGame = (minesCount: number, userId: string = '#', userBet: number = 10) : {gameId: string, error?: string,} => {
 if (typeof minesCount !== "number" || minesCount <= 0 || minesCount > 24) {
         return { gameId: 'INVALID', error: 'Invalid minesCount' };
     }
@@ -51,10 +52,10 @@ if (typeof minesCount !== "number" || minesCount <= 0 || minesCount > 24) {
         seed: serverSeed, 
         minesCount: minesCount,
         safePick: 0,
-        status: 'NO_FINISH'
+        status: 'NO_FINISH',
+        betAmount: userBet,
     };
     
-    console.log(`Игра ${gameId} начата. Мины:`, selectedMines);
 
     return { gameId };
 }
@@ -66,7 +67,7 @@ export const checkTile = (tileIndex: number, gameId: string): boolean => {
         throw new Error('Game not found.');
     }
     if(currentGame.mines.includes(tileIndex)) {
-        currentGame.status = 'FINISH'
+        currentGame.status = 'LOSE'
     }
     return currentGame.mines.includes(tileIndex);
 }
@@ -77,7 +78,7 @@ const currentGame = activeGames[gameId]
  if (!currentGame) {
         throw new Error('Game not found.');
     }
-if(currentGame.status === 'FINISH') {
+if(currentGame.status === 'LOSE' || currentGame.status === 'WIN') {
     return currentGame.mines
 } 
     throw new Error('Game not Finished.')
@@ -91,7 +92,7 @@ if (!currentGame) {
     return currentGame.mines
 }
 
-export const HandleMinesCount = (isMine: boolean, gameId: string, rtp: number = 0.90): {currentMultiplier: number, error?: string} => {
+export const HandleMinesCount = (isMine: boolean, gameId: string, rtp: number): {currentMultiplier: number, error?: string} => {
     const currentGame = activeGames[gameId];
     if (currentGame) {
         if (isMine) {
@@ -103,4 +104,12 @@ export const HandleMinesCount = (isMine: boolean, gameId: string, rtp: number = 
         return { currentMultiplier: multiplier };
     }
     return { currentMultiplier: 0, error: 'Invalid game' };
+}
+
+export const WinGame = (gameId: string, rtp: number) => {
+    const currentGame = activeGames[gameId]
+    if(!currentGame) throw new Error('Error calculating winnings, game not found');
+    currentGame.status = 'WIN';
+    const currentMultiplier = calculateMultiplier(currentGame.minesCount, currentGame.safePick, rtp)
+    return Math.floor(currentMultiplier*currentGame.betAmount * 100)/100
 }

@@ -1,6 +1,6 @@
 
 
-export const calculateMultiplier = (minesCount: number, safePicks: number, rtp: number = 0.95): number => {
+export const calculateMultiplier = (minesCount: number, safePicks: number, rtp: number ): number => {
 const totalTiles = 25;
 const safeTiles = totalTiles - minesCount;
 if(safePicks <= 0) return 1.0
