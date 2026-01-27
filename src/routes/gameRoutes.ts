@@ -1,16 +1,18 @@
 import { Router } from "express";
-import {  activeGames, checkTile, getAllMines, HandleMinesCount, StartGame, TEST_getAllMines, WinGame } from "../services/gameLogic.js";
+import {  checkTile, getAllMines, HandleMinesCount, StartGame, TEST_getAllMines, WinGame } from "../services/gameLogic.js";
 import { getPayoutTable } from "../services/gameMath.js";
-import { error } from "console";
+import { prisma } from "../lib/prisma.js";
+import { error } from 'console';
 
 
 const router = Router();
 const RTP_CONFIG = 0.90
+const userId = 'Test'
 
-router.post('/start-game', (req, res) => {
+router.post('/start-game', async (req, res) => {
   try {
-    const {minesCount} = req.body as { minesCount: number };
-    const result = StartGame(minesCount);
+    const {minesCount, userBet} = req.body as { minesCount: number, userBet: number };
+    const result = await StartGame(minesCount, userId, userBet);
     const paytable = getPayoutTable(minesCount, RTP_CONFIG)
     if(result.error) {
       return res.status(400).json({ error: result.error });
@@ -23,44 +25,55 @@ router.post('/start-game', (req, res) => {
 })
 
 
-router.post('/reveal-cell', (req, res) => {
-    
-    const { tileIndex, gameId,} = req.body as { tileIndex: number, gameId: string,};
+router.post('/reveal-cell', async (req, res) => {
+    const { tileIndex, gameId } = req.body as { tileIndex: number, gameId: string };
     
     if (!gameId || typeof tileIndex !== 'number' || tileIndex < 0 || tileIndex >= 25) {
         return res.status(400).json({ error: 'Invalid gameId or tileIndex.' });
     }
 
     try {
-        const isMine = checkTile(tileIndex, gameId);
-        const stepResult = HandleMinesCount(isMine, gameId, RTP_CONFIG); 
+       
+        const isMine = await checkTile(tileIndex, gameId);
+        
+        
+        const stepResult = await HandleMinesCount(isMine, gameId, RTP_CONFIG); 
         
         if (isMine) {
-            const minesArray = getAllMines(gameId)
-           return res.json({ result: 'mine', multiplier: 0, allMines: minesArray, status: 'LOST' });
-        } else if (activeGames[gameId]) {
-            res.json({ 
-                result: 'safe', 
-                currentMultiplier: stepResult.currentMultiplier,
-                safePick: activeGames[gameId].safePick 
+           
+            const minesArray = await getAllMines(gameId); 
+            return res.json({ 
+                result: 'mine', 
+                multiplier: 0, 
+                allMines: minesArray, 
+                status: 'LOST' 
             });
         }
-      return  res.json({ result: 'NaN', multiplier: 0, error: 'Invalid GameID' });
-    } catch (error) {
-        if (error instanceof Error && error.message.includes('Game not found')) {
-             return res.status(404).json({ error: error.message });
+
+      
+        return res.json({ 
+            result: 'safe', 
+            currentMultiplier: stepResult.currentMultiplier,
+            status: 'PLAYING'
+        });
+
+    } catch (error: any) {
+        if (error.message.includes('Game not found')) {
+            return res.status(404).json({ error: 'Game not found.' });
         }
-        
+        if (error.message.includes('already finished')) {
+            return res.status(400).json({ error: 'This game is already over.' });
+        }
         console.error('Cell selection error:', error);
-      return  res.status(500).json({ error: 'Internal server error during tile check.' });
+        return res.status(500).json({ error: 'Internal server error.' });
     }
 });
 
-router.post('/get-paytable', (req, res) => {
+router.post('/get-paytable', async (req, res) => {
 const {minesCount} = req.body as {minesCount: number}
 if(!minesCount) return res.status(400).json({ error: 'Invalid minesCount.' });
 try {
-    const paytable = getPayoutTable(minesCount, RTP_CONFIG)
+    const paytable = await getPayoutTable(minesCount, RTP_CONFIG)
     if(!paytable || minesCount < 2 || minesCount > 24) {
      return res.json({ result: [], error: 'Invalid MinesCount'});
     } else {
@@ -77,11 +90,11 @@ catch(error) {
     
 )
 
-router.post('/test-route',(req, res) => {
+router.post('/test-route', async(req, res) => {
 const {gameId} = req.body as {gameId: string}
 if(!gameId) return res.status(400).json({ error: 'Invalid gameId.' });
 try {
-    const mines = TEST_getAllMines(gameId)
+    const mines = await TEST_getAllMines(gameId)
     if(!mines) {
      return res.json({ result: [], error: 'Invalid TEST'});
     } else {
@@ -99,17 +112,68 @@ catch(error) {
 )
 
 
-router.post('/win-game', (req, res) => {
+router.post('/win-game', async (req, res) => {
     const {gameId} = req.body as {gameId: string}
     if(!gameId) return res.status(400).json({ error: 'Invalid gameId.' });
     try {
-      const winBet =  WinGame(gameId, RTP_CONFIG);
-        const allMines = getAllMines(gameId)
+      const winBet = await WinGame(gameId, RTP_CONFIG);
+        const allMines = await getAllMines(gameId)
         res.json({status: 'WIN', allMines: allMines, winAmount: winBet} )
     } catch(error) {
         res.status(500).json({ error: 'Error calculating winnings, game not found' });
     }
 })
+
+router.post('/get-unfinished-game', async (req, res) => {
+    const {userId} = req.body as {userId: string} 
+
+    try {
+        const activeGame = await prisma.userGames.findFirst({
+            where: {
+                userId: userId,
+                status: 'PLAYING'
+            },
+            orderBy: { createdAt: 'desc' }
+        });
+
+        if (!activeGame) {
+            const lastGame = await prisma.userGames.findFirst({
+                where: {userId},
+                orderBy: {createdAt: 'desc'}
+            })
+            if(lastGame) {
+                return res.json({
+                    hasActiveGame: false,
+                    betAmount: lastGame.betAmount.toNumber(),
+                    minesCount: lastGame.minesCount,
+                    isSettings: true
+                })
+            }
+            return res.json({ hasActiveGame: false });
+            
+        }
+
+        const currentStep = (activeGame.gameState as any).opened.length;
+const table = getPayoutTable(activeGame.minesCount, RTP_CONFIG);
+const multiplier = table.find(t => t.step === currentStep)?.multiplier || 1
+     const paytable = getPayoutTable(activeGame.minesCount, RTP_CONFIG)
+        res.json({
+            hasActiveGame: true,
+            isSettings: false,
+            gameId: activeGame.gameId,
+            betAmount: activeGame.betAmount.toNumber(),
+            minesCount: activeGame.minesCount,
+            opened: (activeGame.gameState as any).opened || [],
+            paytable: paytable,
+            currentScore: Math.floor(activeGame.betAmount.toNumber() * multiplier * 100) / 100
+        });
+
+    } catch (error) {
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+
 
 
 export default router

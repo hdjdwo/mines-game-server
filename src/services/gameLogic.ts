@@ -1,115 +1,149 @@
 import seedrandom from "seedrandom";
 import { calculateMultiplier } from "./gameMath.js";
-
-type GameStatus = 'LOSE' | 'WIN' | 'NO_FINISH'
-
-interface ActiveGameState {
-mines: number[];
-seed: string;
-minesCount: number;
-safePick: number;
-status: GameStatus;
-betAmount: number;
-}
-
-export const activeGames: Record<string, ActiveGameState> = {}
+import { prisma } from "../lib/prisma.js";
 
 const generateGameId = () => {
- return (Math.random().toString(36).substring(2, 6) + Date.now().toString(36)).toLocaleUpperCase();
+    return (Math.random().toString(36).substring(2, 6) + Date.now().toString(36)).toLocaleUpperCase();
 }
 
-
 const randomizeMines = (minesCount: number, serverSeed: string) => {
-    const selectionPool = Array.from({length: 25}, (_, index) => index);
+    const selectionPool = Array.from({ length: 25 }, (_, index) => index);
     const selectedMines: number[] = [];
     let rng = seedrandom(serverSeed);
 
-   for(let i = 0; i < minesCount; i++) {
-        let randomIndex = Math.floor(rng() * selectionPool.length); 
-        
+    for (let i = 0; i < minesCount; i++) {
+        let randomIndex = Math.floor(rng() * selectionPool.length);
         let currentNumber = selectionPool[randomIndex];
-        if(currentNumber !== undefined) 
-        selectedMines.push(currentNumber);
-        
+        if (currentNumber !== undefined) selectedMines.push(currentNumber);
         selectionPool.splice(randomIndex, 1);
     }
     return selectedMines;
 }
 
-export const StartGame = (minesCount: number, userId: string = '#', userBet: number = 10) : {gameId: string, error?: string,} => {
-if (typeof minesCount !== "number" || minesCount <= 0 || minesCount > 24) {
+export const StartGame = async (minesCount: number, userId: string = '#', userBet: number = 10, initialBalance: number = 1000): Promise<{ gameId: string; error?: string; }> => {
+    if (typeof minesCount !== "number" || minesCount <= 0 || minesCount > 24) {
         return { gameId: 'INVALID', error: 'Invalid minesCount' };
     }
 
+    const user = await prisma.user.upsert({
+        where: { id: userId },
+        update: {},
+        create: { id: userId, balance: initialBalance }
+    });
+
+    if (user.balance.toNumber() < userBet) {
+        return { gameId: 'INVALID', error: 'Insufficient balance' };
+    }
+
     const serverSeed = userId + Date.now() + Math.random().toString(36);
-    
     const gameId = generateGameId();
-    
     const selectedMines = randomizeMines(minesCount, serverSeed);
-    
-    activeGames[gameId] = {
-        mines: selectedMines,
-        seed: serverSeed, 
-        minesCount: minesCount,
-        safePick: 0,
-        status: 'NO_FINISH',
-        betAmount: userBet,
-    };
-    
+
+    await prisma.$transaction([
+        prisma.user.update({
+            where: { id: userId },
+            data: { balance: { decrement: userBet } }
+        }),
+        prisma.userGames.create({
+            data: {
+                gameId,
+                userId,
+                betAmount: userBet,
+                minesPositions: selectedMines,
+                minesCount,
+                seed: serverSeed,
+                status: 'PLAYING',
+                gameState: { opened: [] }
+            }
+        })
+    ]);
 
     return { gameId };
 }
 
-export const checkTile = (tileIndex: number, gameId: string): boolean => {
-    const currentGame = activeGames[gameId];
+export const checkTile = async (tileIndex: number, gameId: string): Promise<boolean> => {
+    const currentGame = await prisma.userGames.findUnique({
+        where: { gameId }
+    });
 
-    if (!currentGame) {
-        throw new Error('Game not found.');
+    if (!currentGame || currentGame.status !== 'PLAYING') {
+        throw new Error('Invalid game state');
     }
-    if(currentGame.mines.includes(tileIndex)) {
-        currentGame.status = 'LOSE'
-    }
-    return currentGame.mines.includes(tileIndex);
+
+    const isMine = currentGame.minesPositions.includes(tileIndex);
+    const currentGameState = (currentGame.gameState as { opened?: number[] }) || { opened: [] };
+    const updatedOpenedTiles = [...(currentGameState.opened || []), tileIndex];
+
+    await prisma.userGames.update({
+        where: { gameId },
+        data: {
+            status: isMine ? 'LOSE' : 'PLAYING',
+            gameState: { opened: updatedOpenedTiles }
+        }
+    });
+
+    return isMine;
+};
+
+export const HandleMinesCount = async (isMine: boolean, gameId: string, rtp: number): Promise<{ currentMultiplier: number; error?: string; }> => {
+    const currentGame = await prisma.userGames.findUnique({
+        where: { gameId }
+    });
+   
+    if (!currentGame) return { currentMultiplier: 0, error: 'Invalid game' };
+
+    if (isMine) return { currentMultiplier: 0 };
+
+    const currentGameState = (currentGame.gameState as { opened: number[] });
+    const multiplier = calculateMultiplier(currentGame.minesCount, currentGameState.opened.length, rtp); 
+    
+    return { currentMultiplier: multiplier };
 }
 
-export const getAllMines = (gameId: string) => {
-const currentGame = activeGames[gameId]
+export const WinGame = async (gameId: string, rtp: number) => {
+    const currentGame = await prisma.userGames.findUnique({
+        where: { gameId }
+    });
 
- if (!currentGame) {
-        throw new Error('Game not found.');
+    if (!currentGame || currentGame.status !== 'PLAYING') {
+        throw new Error('Game not found or already finished');
     }
-if(currentGame.status === 'LOSE' || currentGame.status === 'WIN') {
-    return currentGame.mines
-} 
-    throw new Error('Game not Finished.')
+
+    const currentGameState = (currentGame.gameState as { opened: number[] });
+    const currentMultiplier = calculateMultiplier(currentGame.minesCount, currentGameState.opened.length, rtp);
+    const winAmount = Math.floor(currentMultiplier * currentGame.betAmount.toNumber() * 100) / 100;
+
+    await prisma.$transaction([
+        prisma.userGames.update({
+            where: { gameId },
+            data: { status: 'WIN', payout: winAmount }
+        }),
+        prisma.user.update({
+            where: { id: currentGame.userId },
+            data: { balance: { increment: winAmount } }
+        })
+    ]);
+
+    return winAmount;
 }
 
-export const TEST_getAllMines = (gameId: string) => {
-const currentGame = activeGames[gameId]
-if (!currentGame) {
-        throw new Error('Game not found.');
+export const getAllMines = async (gameId: string) => {
+    const currentGame = await prisma.userGames.findUnique({
+        where: { gameId }
+    });
+
+    if (!currentGame) throw new Error('Game not found.');
+    
+    if (currentGame.status === 'LOSE' || currentGame.status === 'WIN') {
+        return currentGame.minesPositions;
     }
-    return currentGame.mines
+    throw new Error('Game not finished.');
 }
 
-export const HandleMinesCount = (isMine: boolean, gameId: string, rtp: number): {currentMultiplier: number, error?: string} => {
-    const currentGame = activeGames[gameId];
-    if (currentGame) {
-        if (isMine) {
-            currentGame.safePick = 0;
-            return { currentMultiplier: 0 };
-        } 
-        currentGame.safePick += 1;
-        const multiplier = calculateMultiplier(currentGame.minesCount, currentGame.safePick, rtp); 
-        return { currentMultiplier: multiplier };
-    }
-    return { currentMultiplier: 0, error: 'Invalid game' };
-}
-
-export const WinGame = (gameId: string, rtp: number) => {
-    const currentGame = activeGames[gameId]
-    if(!currentGame) throw new Error('Error calculating winnings, game not found');
-    currentGame.status = 'WIN';
-    const currentMultiplier = calculateMultiplier(currentGame.minesCount, currentGame.safePick, rtp)
-    return Math.floor(currentMultiplier*currentGame.betAmount * 100)/100
+export const TEST_getAllMines = async (gameId: string) => {
+    const currentGame = await prisma.userGames.findUnique({
+        where: { gameId }
+    });
+    if (!currentGame) throw new Error('Game not found.');
+    return currentGame.minesPositions;
 }

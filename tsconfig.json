@@ -1,27 +1,32 @@
 {
   "compilerOptions": {
-   
-    "module": "NodeNext",           
-    "target": "ES2020",             
-    "moduleResolution": "NodeNext", 
-    
-    "rootDir": "./src",            
-    "outDir": "./dist",            
-  
-    "strict": true,                 
-    "verbatimModuleSyntax": true,   
-    "isolatedModules": true,       
-    "noUncheckedSideEffectImports": true,
-    "moduleDetection": "force",
+    "target": "ES2023",
+    "module": "ESNext",
+    "moduleResolution": "node",
+
+    "rootDir": "./",
+    "outDir": "./dist",
+
+    "strict": true,
+    "esModuleInterop": true,
     "skipLibCheck": true,
-    "noUncheckedIndexedAccess": true,
-    "exactOptionalPropertyTypes": true,
-    
+    "paths": {
+      "@prisma/client": ["./generated/prisma"]
+    },
+
     "sourceMap": true,
     "declaration": true,
-    "declarationMap": true,
-    "types": ["node"],              
-    
-  
-  }
+
+    "types": ["node"]
+  },
+
+  "include": ["src/**/*", "generated/prisma/**/*"],
+
+  "exclude": [
+    "node_modules",
+    "dist",
+    "prisma",
+    "generated",
+    "prisma.config.ts"
+  ]
 }

@@ -1,0 +1,36 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  
+}
+
+model User {
+  id       String      @id @default(uuid())
+  balance  Decimal     @default(1000.00) 
+  currency String      @default("USD")
+  games    UserGames[]
+}
+
+model UserGames {
+  gameId         String   @id
+  userId         String
+  user           User     @relation(fields: [userId], references: [id])
+  betAmount      Decimal
+  minesPositions Int[]
+  minesCount     Int
+  seed           String
+  status         String   
+  payout         Decimal  @default(0)
+  createdAt      DateTime @default(now())
+  gameState      Json     
+}
