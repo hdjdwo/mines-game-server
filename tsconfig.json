@@ -4,15 +4,14 @@
     "module": "ESNext",
     "moduleResolution": "node",
 
-    "rootDir": "./",
-    "outDir": "./dist",
+    "rootDir": ".",
+    "outDir": "dist",
+
+    "baseUrl": ".",
 
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "paths": {
-      "@prisma/client": ["./generated/prisma"]
-    },
 
     "sourceMap": true,
     "declaration": true,
@@ -20,13 +19,13 @@
     "types": ["node"]
   },
 
-  "include": ["src/**/*", "generated/prisma/**/*"],
+  "include": [
+    "src",
+    "generated"
+  ],
 
   "exclude": [
     "node_modules",
-    "dist",
-    "prisma",
-    "generated",
-    "prisma.config.ts"
+    "dist"
   ]
 }
