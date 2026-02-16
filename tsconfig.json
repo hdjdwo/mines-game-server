@@ -7,14 +7,12 @@
     "rootDir": ".",
     "outDir": "dist",
 
-    "baseUrl": ".",
-
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
 
     "sourceMap": true,
-    "declaration": true,
+    "declaration": false,
 
     "types": ["node"]
   },
@@ -22,10 +20,5 @@
   "include": [
     "src",
     "generated"
-  ],
-
-  "exclude": [
-    "node_modules",
-    "dist"
   ]
 }
