@@ -6,7 +6,11 @@ const PORT = Number(process.env.PORT) || 3000;
 
 
 app.use(cors({
-  origin: ['http://localhost:5173', 'https://mines-game-client-s3vr.vercel.app/'],
+  origin: [
+    'http://localhost:5173', 
+    'https://mines-game-client-s3vr.vercel.app', 
+    'https://mines-game-client-s3vr-gqz01ycaf-vlads-projects-5e79a7a3.vercel.app'
+  ],
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   credentials: true
 }));
