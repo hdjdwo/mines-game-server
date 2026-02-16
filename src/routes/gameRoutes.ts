@@ -10,9 +10,10 @@ const RTP_CONFIG = 0.90
 const userId = 'Test'
 
 router.post('/start-game', async (req, res) => {
+    const gameMode = 'MANUAL'
   try {
     const {minesCount, userBet} = req.body as { minesCount: number, userBet: number };
-    const result = await StartGame(minesCount, userId, userBet);
+    const result = await StartGame(minesCount, userId, userBet, gameMode);
     const paytable = getPayoutTable(minesCount, RTP_CONFIG)
     if(result.error) {
       return res.status(400).json({ error: result.error });
@@ -35,9 +36,8 @@ router.post('/reveal-cell', async (req, res) => {
     try {
        
         const isMine = await checkTile(tileIndex, gameId);
-        
-        
-        const stepResult = await HandleMinesCount(isMine, gameId, RTP_CONFIG); 
+        const mineFlag = typeof isMine === 'object' ? isMine.hasMines : isMine        
+        const stepResult = await HandleMinesCount(mineFlag, gameId, RTP_CONFIG); 
         
         if (isMine) {
            
@@ -68,6 +68,45 @@ router.post('/reveal-cell', async (req, res) => {
         return res.status(500).json({ error: 'Internal server error.' });
     }
 });
+
+router.post('/reveal-cell-auto', async (req, res) => {
+    const { selectedTiles, minesCount, userBet, isGameStarted } = req.body as { 
+  selectedTiles: number[],
+  minesCount: number,
+  userBet: number,
+  isGameStarted?: boolean 
+};
+
+const gameMode = 'AUTO'
+const isArray = Array.isArray(selectedTiles);
+const hasNoDuplicates = isArray && selectedTiles.length === new Set(selectedTiles).size;
+const allInRange = isArray && selectedTiles.every(index => index >= 0 && index <= 24);
+const paytable = getPayoutTable(minesCount, RTP_CONFIG)
+
+ if ( !isArray || !hasNoDuplicates || !allInRange) {
+        return res.status(400).json({ error: 'Invalid gameId or tileIndex.' });
+    }
+
+    try {
+        if(isGameStarted) {
+            const start = await StartGame(minesCount, userId, userBet, gameMode)
+        const check = await checkTile(selectedTiles, start.gameId)
+        if(typeof check === 'boolean') return res.status(400).json({ error: 'Invalid start game' });
+        const {result, hasMines} = check
+        let winAmount = 0;
+        if (!hasMines) {
+            winAmount = await WinGame(start.gameId, RTP_CONFIG);
+        } 
+           return res.json({paytable, result, isWin: !hasMines, winAmount})
+        }
+        return res.status(400).json({ error: 'Invalid start game' });
+    }
+    catch(error) {
+        console.error('AUTO GAME ERROR:', error);
+    res.status(500).json({ error: 'Internal server error' });
+}
+
+} )
 
 router.post('/get-paytable', async (req, res) => {
 const {minesCount} = req.body as {minesCount: number}

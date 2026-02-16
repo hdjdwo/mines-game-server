@@ -20,7 +20,7 @@ const randomizeMines = (minesCount: number, serverSeed: string) => {
     return selectedMines;
 }
 
-export const StartGame = async (minesCount: number, userId: string = '#', userBet: number = 10, initialBalance: number = 1000): Promise<{ gameId: string; error?: string; }> => {
+export const StartGame = async (minesCount: number, userId: string = '#', userBet: number = 10, gameMode: string, initialBalance: number = 1000): Promise<{ gameId: string; error?: string; }> => {
     if (typeof minesCount !== "number" || minesCount <= 0 || minesCount > 24) {
         return { gameId: 'INVALID', error: 'Invalid minesCount' };
     }
@@ -53,7 +53,8 @@ export const StartGame = async (minesCount: number, userId: string = '#', userBe
                 minesCount,
                 seed: serverSeed,
                 status: 'PLAYING',
-                gameState: { opened: [] }
+                gameState: { opened: [] },
+                gameMode: gameMode
             }
         })
     ]);
@@ -61,7 +62,8 @@ export const StartGame = async (minesCount: number, userId: string = '#', userBe
     return { gameId };
 }
 
-export const checkTile = async (tileIndex: number, gameId: string): Promise<boolean> => {
+
+export const checkTile = async (tileIndex: number | number[], gameId: string,): Promise<boolean | {result :{index: number, isMine: boolean}[], hasMines: boolean}> => {
     const currentGame = await prisma.userGames.findUnique({
         where: { gameId }
     });
@@ -70,7 +72,10 @@ export const checkTile = async (tileIndex: number, gameId: string): Promise<bool
         throw new Error('Invalid game state');
     }
 
-    const isMine = currentGame.minesPositions.includes(tileIndex);
+    const allMines = currentGame.minesPositions;
+
+    if(currentGame.gameMode === 'MANUAL' && !Array.isArray(tileIndex)) {
+        const isMine = allMines.includes(tileIndex);
     const currentGameState = (currentGame.gameState as { opened?: number[] }) || { opened: [] };
     const updatedOpenedTiles = [...(currentGameState.opened || []), tileIndex];
 
@@ -81,8 +86,30 @@ export const checkTile = async (tileIndex: number, gameId: string): Promise<bool
             gameState: { opened: updatedOpenedTiles }
         }
     });
-
     return isMine;
+    } 
+        if (Array.isArray(tileIndex)) {
+        const result = tileIndex.map(index => ({
+        index: index,         
+        isMine: allMines.includes(index) 
+    }));
+
+        const hasMines = result.some(item => item.isMine === true);
+
+        await prisma.userGames.update({
+            where: { gameId },
+            data: {
+                status: hasMines ? 'LOSE' : 'WIN', 
+                gameState: { opened: tileIndex } 
+            }
+        });
+
+        return {result, hasMines};
+    }
+
+    throw new Error('Invalid input: tileIndex must be an array for AUTO mode');
+    
+    
 };
 
 export const HandleMinesCount = async (isMine: boolean, gameId: string, rtp: number): Promise<{ currentMultiplier: number; error?: string; }> => {

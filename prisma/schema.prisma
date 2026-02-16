@@ -32,5 +32,6 @@ model UserGames {
   status         String   
   payout         Decimal  @default(0)
   createdAt      DateTime @default(now())
-  gameState      Json     
+  gameState      Json    
+  gameMode       String   @default("MANUAL")
 }
