@@ -5,7 +5,11 @@ const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 
 
-app.use(cors());
+app.use(cors({
+  origin: ['http://localhost:5173', 'https://mines-game-client-s3vr.vercel.app/'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  credentials: true
+}));
 app.use(express.json());
 
 
